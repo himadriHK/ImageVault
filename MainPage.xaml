@@ -1,0 +1,175 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:ImageVault.ViewModels"
+             xmlns:models="clr-namespace:ImageVault.Models"
+             xmlns:local="clr-namespace:ImageVault"
+             x:Class="ImageVault.MainPage"
+             x:DataType="vm:MainViewModel"
+             Title="ImageVault">
+
+    <ContentPage.Resources>
+        <ResourceDictionary>
+            <local:InvertBoolConverter x:Key="InvertBool" />
+            <local:IsZeroConverter x:Key="IsZero" />
+            <local:NotIsZeroConverter x:Key="NotIsZero" />
+        </ResourceDictionary>
+    </ContentPage.Resources>
+
+    <Grid RowDefinitions="Auto,Auto,*,Auto">
+
+        <VerticalStackLayout Grid.Row="0" Padding="12" Spacing="6"
+                             IsVisible="{Binding IsModelLoading}">
+            <ActivityIndicator IsRunning="{Binding IsModelLoading}"
+                               HorizontalOptions="Center"
+                               Color="{StaticResource Primary}" />
+            <Label Text="Loading CLIP models..."
+                   HorizontalOptions="Center"
+                   FontAttributes="Italic" />
+        </VerticalStackLayout>
+
+        <Grid Grid.Row="0" Padding="12,8" ColumnDefinitions="*,Auto,Auto,Auto"
+              IsVisible="{Binding IsModelLoading, Converter={StaticResource InvertBool}}">
+            <Label Text="ImageVault"
+                   FontSize="20"
+                   FontAttributes="Bold"
+                   VerticalOptions="Center" />
+
+            <Button Grid.Column="1"
+                    Text="+ Gallery"
+                    Command="{Binding PickImagesCommand}"
+                    Margin="4,0"
+                    IsEnabled="{Binding IsProcessing, Converter={StaticResource InvertBool}}" />
+
+            <Button Grid.Column="2"
+                    Text="&#x21BB;"
+                    Command="{Binding RefreshCommand}"
+                    Margin="4,0"
+                    IsEnabled="{Binding IsBusy, Converter={StaticResource InvertBool}}" />
+
+            <Button Grid.Column="3"
+                    Text="&#x1F5D1;"
+                    Command="{Binding ClearDatabaseCommand}"
+                    Margin="4,0"
+                    IsEnabled="{Binding IsBusy, Converter={StaticResource InvertBool}}"
+                    BackgroundColor="{StaticResource Danger}" />
+        </Grid>
+
+        <Grid Grid.Row="1" Padding="12,4" ColumnDefinitions="*,Auto"
+              IsVisible="{Binding IsModelLoading, Converter={StaticResource InvertBool}}">
+            <SearchBar Placeholder="Search images by description..."
+                       Text="{Binding SearchQuery}"
+                       SearchCommand="{Binding SearchCommand}"
+                       HorizontalOptions="Fill" />
+            <Button Grid.Column="1"
+                    Text="Search"
+                    Command="{Binding SearchCommand}"
+                    VerticalOptions="Center"
+                    Margin="8,0,0,0" />
+        </Grid>
+
+        <CollectionView Grid.Row="2"
+                        ItemsSource="{Binding Images}"
+                        IsVisible="{Binding SearchResults.Count, Converter={StaticResource IsZero}}"
+                        SelectionMode="None"
+                        Margin="8">
+            <CollectionView.ItemsLayout>
+                <GridItemsLayout Orientation="Vertical"
+                                 Span="3"
+                                 HorizontalItemSpacing="4"
+                                 VerticalItemSpacing="4" />
+            </CollectionView.ItemsLayout>
+            <CollectionView.ItemTemplate>
+                <DataTemplate x:DataType="models:ImageEntity">
+                    <Border StrokeShape="RoundRectangle 8"
+                            Stroke="Gray"
+                            StrokeThickness="0.5"
+                            Padding="2">
+                        <Grid RowDefinitions="*,Auto">
+                            <Image Source="{Binding FilePath}"
+                                   Aspect="AspectFill"
+                                   HeightRequest="120" />
+                            <Label Grid.Row="1"
+                                   Text="{Binding FileName}"
+                                   FontSize="10"
+                                   LineBreakMode="TailTruncation"
+                                   MaxLines="1"
+                                   Margin="4,2" />
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+            <CollectionView.EmptyView>
+                <VerticalStackLayout HorizontalOptions="Center"
+                                     VerticalOptions="Center"
+                                     Padding="40">
+                    <Label Text="No images yet"
+                           FontSize="18"
+                           HorizontalOptions="Center" />
+                    <Label Text="Tap '+ Gallery' to add images"
+                           FontSize="14"
+                           HorizontalOptions="Center"
+                           TextColor="Gray" />
+                </VerticalStackLayout>
+            </CollectionView.EmptyView>
+        </CollectionView>
+
+        <CollectionView Grid.Row="2"
+                        ItemsSource="{Binding SearchResults}"
+                        IsVisible="{Binding SearchResults.Count, Converter={StaticResource NotIsZero}}"
+                        SelectionMode="None"
+                        Margin="8">
+            <CollectionView.ItemsLayout>
+                <GridItemsLayout Orientation="Vertical"
+                                 Span="3"
+                                 HorizontalItemSpacing="4"
+                                 VerticalItemSpacing="4" />
+            </CollectionView.ItemsLayout>
+            <CollectionView.ItemTemplate>
+                <DataTemplate x:DataType="models:SearchResult">
+                    <Border StrokeShape="RoundRectangle 8"
+                            Stroke="Gold"
+                            StrokeThickness="1"
+                            Padding="2">
+                        <Grid RowDefinitions="*,Auto,Auto">
+                            <Image Source="{Binding Entity.FilePath}"
+                                   Aspect="AspectFill"
+                                   HeightRequest="120" />
+                            <Label Grid.Row="1"
+                                   Text="{Binding Entity.FileName}"
+                                   FontSize="10"
+                                   LineBreakMode="TailTruncation"
+                                   MaxLines="1"
+                                   Margin="4,2" />
+                            <Label Grid.Row="2"
+                                   Text="{Binding Score, StringFormat='Score: {0:F2}'}"
+                                   FontSize="9"
+                                   TextColor="Gold"
+                                   Margin="4,0,4,2" />
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+
+        <Grid Grid.Row="3" Padding="12,4"
+              IsVisible="{Binding IsProcessing}">
+            <ProgressBar Progress="{Binding ProcessingProgress}"
+                         ProgressColor="{StaticResource Primary}" />
+            <Label Text="{Binding StatusMessage}"
+                   HorizontalOptions="Center"
+                   VerticalOptions="Center"
+                   FontSize="12"
+                   TextColor="Gray" />
+        </Grid>
+
+        <Label Grid.Row="3"
+               Text="{Binding StatusMessage}"
+               Padding="12,4"
+               FontSize="12"
+               TextColor="Gray"
+               IsVisible="{Binding IsProcessing, Converter={StaticResource InvertBool}}" />
+
+    </Grid>
+
+</ContentPage>
