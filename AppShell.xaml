@@ -3,9 +3,16 @@
        xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
        xmlns:local="clr-namespace:ImageVault"
        x:Class="ImageVault.AppShell"
-       Shell.FlyoutBehavior="Disabled">
+       FlyoutBehavior="Flyout">
 
-    <ShellContent
-        ContentTemplate="{DataTemplate local:MainPage}" />
+    <FlyoutItem Title="Gallery" Icon="">
+        <ShellContent
+            ContentTemplate="{DataTemplate local:MainPage}" />
+    </FlyoutItem>
+
+    <FlyoutItem Title="Settings" Icon="">
+        <ShellContent
+            ContentTemplate="{DataTemplate local:SettingsPage}" />
+    </FlyoutItem>
 
 </Shell>

@@ -18,17 +18,16 @@
 
     <Grid RowDefinitions="Auto,Auto,*,Auto">
 
-        <VerticalStackLayout Grid.Row="0" Padding="12" Spacing="6"
+        <VerticalStackLayout Grid.Row="0" Padding="12,8" Spacing="4"
                              IsVisible="{Binding IsModelLoading}">
-            <ActivityIndicator IsRunning="{Binding IsModelLoading}"
-                               HorizontalOptions="Center"
-                               Color="{StaticResource Primary}" />
-            <Label Text="Loading CLIP models..."
+            <Label Text="{Binding StatusMessage}"
                    HorizontalOptions="Center"
-                   FontAttributes="Italic" />
+                   FontSize="13" />
+            <ProgressBar Progress="{Binding ModelLoadingProgress}"
+                         ProgressColor="{StaticResource Primary}" />
         </VerticalStackLayout>
 
-        <Grid Grid.Row="0" Padding="12,8" ColumnDefinitions="*,Auto,Auto,Auto"
+        <Grid Grid.Row="0" Padding="12,8" ColumnDefinitions="*,Auto,Auto"
               IsVisible="{Binding IsModelLoading, Converter={StaticResource InvertBool}}">
             <Label Text="ImageVault"
                    FontSize="20"
@@ -38,16 +37,9 @@
             <Button Grid.Column="1"
                     Text="+ Gallery"
                     Command="{Binding PickImagesCommand}"
-                    Margin="4,0"
-                    IsEnabled="{Binding IsProcessing, Converter={StaticResource InvertBool}}" />
+                    Margin="4,0" />
 
             <Button Grid.Column="2"
-                    Text="&#x21BB;"
-                    Command="{Binding RefreshCommand}"
-                    Margin="4,0"
-                    IsEnabled="{Binding IsBusy, Converter={StaticResource InvertBool}}" />
-
-            <Button Grid.Column="3"
                     Text="&#x1F5D1;"
                     Command="{Binding ClearDatabaseCommand}"
                     Margin="4,0"
@@ -88,7 +80,11 @@
                         <Grid RowDefinitions="*,Auto">
                             <Image Source="{Binding FilePath}"
                                    Aspect="AspectFill"
-                                   HeightRequest="120" />
+                                   HeightRequest="120">
+                                <Image.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnImageTapped" />
+                                </Image.GestureRecognizers>
+                            </Image>
                             <Label Grid.Row="1"
                                    Text="{Binding FileName}"
                                    FontSize="10"
@@ -131,10 +127,14 @@
                             Stroke="Gold"
                             StrokeThickness="1"
                             Padding="2">
-                        <Grid RowDefinitions="*,Auto,Auto">
+                        <Grid RowDefinitions="*,Auto,Auto,Auto,Auto">
                             <Image Source="{Binding Entity.FilePath}"
                                    Aspect="AspectFill"
-                                   HeightRequest="120" />
+                                   HeightRequest="120">
+                                <Image.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnImageTapped" />
+                                </Image.GestureRecognizers>
+                            </Image>
                             <Label Grid.Row="1"
                                    Text="{Binding Entity.FileName}"
                                    FontSize="10"
@@ -142,9 +142,19 @@
                                    MaxLines="1"
                                    Margin="4,2" />
                             <Label Grid.Row="2"
-                                   Text="{Binding Score, StringFormat='Score: {0:F2}'}"
+                                   Text="{Binding Score, StringFormat='Cos: {0:F2}'}"
                                    FontSize="9"
                                    TextColor="Gold"
+                                   Margin="4,0,4,2" />
+                            <Label Grid.Row="3"
+                                   Text="{Binding DotProduct, StringFormat='Dot: {0:F2}'}"
+                                   FontSize="9"
+                                   TextColor="Orange"
+                                   Margin="4,0,4,2" />
+                            <Label Grid.Row="4"
+                                   Text="{Binding LogitScore, StringFormat='Logit: {0:F2}'}"
+                                   FontSize="9"
+                                   TextColor="Cyan"
                                    Margin="4,0,4,2" />
                         </Grid>
                     </Border>
@@ -152,23 +162,11 @@
             </CollectionView.ItemTemplate>
         </CollectionView>
 
-        <Grid Grid.Row="3" Padding="12,4"
-              IsVisible="{Binding IsProcessing}">
-            <ProgressBar Progress="{Binding ProcessingProgress}"
-                         ProgressColor="{StaticResource Primary}" />
-            <Label Text="{Binding StatusMessage}"
-                   HorizontalOptions="Center"
-                   VerticalOptions="Center"
-                   FontSize="12"
-                   TextColor="Gray" />
-        </Grid>
-
         <Label Grid.Row="3"
                Text="{Binding StatusMessage}"
                Padding="12,4"
                FontSize="12"
-               TextColor="Gray"
-               IsVisible="{Binding IsProcessing, Converter={StaticResource InvertBool}}" />
+               TextColor="Gray" />
 
     </Grid>
 

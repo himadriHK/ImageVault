@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="ImageVault.ImageViewerPage"
+             Shell.NavBarIsVisible="False"
+             BackgroundColor="Black">
+
+    <Grid>
+        <Image Source="{Binding ImagePath}"
+               Aspect="AspectFit"
+               VerticalOptions="Fill"
+               HorizontalOptions="Fill" />
+
+        <Grid.GestureRecognizers>
+            <TapGestureRecognizer Tapped="OnTapToDismiss" />
+        </Grid.GestureRecognizers>
+    </Grid>
+
+</ContentPage>

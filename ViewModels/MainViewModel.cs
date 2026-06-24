@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ImageVault.Models;
 using ImageVault.Services;
+using Shiny.Jobs;
 
 namespace ImageVault.ViewModels;
 
@@ -10,16 +11,15 @@ public partial class MainViewModel : ObservableObject
 {
     private readonly IClipService _clipService;
     private readonly IVectorDbService _vectorDb;
-    private readonly IImageProcessingService _processingService;
+    private readonly IJobManager _jobManager;
+    private readonly ImportRequest _importRequest;
+    private readonly SettingsViewModel _settings;
 
     [ObservableProperty]
     private bool _isBusy;
 
     [ObservableProperty]
     private bool _isModelLoading;
-
-    [ObservableProperty]
-    private bool _isProcessing;
 
     [ObservableProperty]
     private string _statusMessage = string.Empty;
@@ -31,10 +31,7 @@ public partial class MainViewModel : ObservableObject
     private int _totalImages;
 
     [ObservableProperty]
-    private int _processedCount;
-
-    [ObservableProperty]
-    private double _processingProgress;
+    private double _modelLoadingProgress;
 
     public ObservableCollection<ImageEntity> Images { get; } = [];
     public ObservableCollection<SearchResult> SearchResults { get; } = [];
@@ -42,57 +39,64 @@ public partial class MainViewModel : ObservableObject
     public MainViewModel(
         IClipService clipService,
         IVectorDbService vectorDb,
-        IImageProcessingService processingService)
+        IJobManager jobManager,
+        ImportRequest importRequest,
+        SettingsViewModel settings)
     {
         _clipService = clipService;
         _vectorDb = vectorDb;
-        _processingService = processingService;
-
-        _processingService.OnItemProcessed += (_, _, _) => { };
-        _processingService.OnBatchProgress += count =>
-        {
-            MainThread.BeginInvokeOnMainThread(() =>
-            {
-                ProcessedCount = count;
-                ProcessingProgress = TotalImages > 0 ? (double)count / TotalImages : 0;
-                StatusMessage = $"Processing: {count}/{TotalImages}";
-            });
-        };
-        _processingService.OnError += msg =>
-        {
-            MainThread.BeginInvokeOnMainThread(() =>
-            {
-                StatusMessage = $"Error: {msg}";
-            });
-        };
-        _processingService.OnBatchComplete += () =>
-        {
-            MainThread.BeginInvokeOnMainThread(async () =>
-            {
-                IsProcessing = false;
-                StatusMessage = "Processing complete";
-                await LoadImagesAsync();
-            });
-        };
+        _jobManager = jobManager;
+        _importRequest = importRequest;
+        _settings = settings;
     }
 
     [RelayCommand]
     private async Task InitializeAsync()
     {
-        if (IsBusy) return;
+        if (IsBusy || _clipService.IsModelLoaded) return;
 
         try
         {
             IsBusy = true;
             IsModelLoading = true;
+            ModelLoadingProgress = 0;
             StatusMessage = "Loading models...";
 
+            await AndroidNotification.RequestPermissionAsync();
             await _vectorDb.InitializeAsync();
-            await _clipService.LoadModelsAsync();
-
-            IsModelLoading = false;
-            StatusMessage = "Ready";
             await LoadImagesAsync();
+
+            var progress = new Progress<double>(p =>
+            {
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    ModelLoadingProgress = p;
+                    if (p < 1.0)
+                        StatusMessage = $"Loading models: {p * 100:F0}%";
+                });
+            });
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await _clipService.LoadModelsAsync(progress);
+                }
+                catch (Exception ex)
+                {
+                    MainThread.BeginInvokeOnMainThread(() =>
+                        StatusMessage = $"Model loading failed: {ex.Message}");
+                }
+                finally
+                {
+                    MainThread.BeginInvokeOnMainThread(() =>
+                    {
+                        IsModelLoading = false;
+                        if (StatusMessage.StartsWith("Loading models"))
+                            StatusMessage = "Ready";
+                    });
+                }
+            });
         }
         catch (Exception ex)
         {
@@ -107,13 +111,12 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private async Task PickImagesAsync()
     {
-        if (IsProcessing) return;
-
         try
         {
             var result = await FilePicker.Default.PickMultipleAsync(new PickOptions
             {
-                PickerTitle = "Select images for embedding"
+                PickerTitle = "Select images",
+                FileTypes = FilePickerFileType.Images
             });
 
             if (result == null) return;
@@ -137,19 +140,17 @@ public partial class MainViewModel : ObservableObject
                     };
                 }).ToList();
 
-            TotalImages = items.Count;
-            ProcessedCount = 0;
-            ProcessingProgress = 0;
-            IsProcessing = true;
-            StatusMessage = $"Processing {items.Count} images...";
-
-            await Task.Run(() =>
-                _processingService.ProcessBatchAsync(items));
+            _importRequest.DirectoryPath = null;
+            _importRequest.PickedFiles = items;
+            var jobResult = await _jobManager.RunJob(typeof(ImageProcessingJob), CancellationToken.None);
+            StatusMessage = jobResult.Exception != null
+                ? $"Import failed: {jobResult.Exception.Message}"
+                : $"{items.Count} files queued for import";
+            await LoadImagesAsync();
         }
         catch (Exception ex)
         {
             StatusMessage = $"Pick failed: {ex.Message}";
-            IsProcessing = false;
         }
     }
 
@@ -164,7 +165,8 @@ public partial class MainViewModel : ObservableObject
             StatusMessage = "Searching...";
 
             var queryEmbedding = await _clipService.GetTextEmbeddingAsync(SearchQuery);
-            var results = await _vectorDb.SearchAsync(queryEmbedding, 20);
+            var results = await _vectorDb.SearchAsync(
+                queryEmbedding, _settings.SortMetric, _settings.FilterThreshold, 20);
 
             SearchResults.Clear();
             foreach (var result in results)
@@ -213,34 +215,37 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
+    private static async Task<bool> RequestStoragePermissionAsync()
+    {
+        if (OperatingSystem.IsAndroidVersionAtLeast(33))
+            return await Permissions.RequestAsync<Permissions.Media>() == PermissionStatus.Granted;
+        else
+            return await Permissions.RequestAsync<Permissions.StorageRead>() == PermissionStatus.Granted;
+    }
+
     [RelayCommand]
     private async Task ImportDirectoryAsync(string? directoryPath)
     {
-        if (string.IsNullOrEmpty(directoryPath) || IsProcessing) return;
+        if (string.IsNullOrEmpty(directoryPath)) return;
+
+        if (!await RequestStoragePermissionAsync())
+        {
+            StatusMessage = "Storage permission required";
+            return;
+        }
 
         try
         {
-            var items = ImageProcessingService.ScanDirectory(directoryPath);
-
-            if (items.Count == 0)
-            {
-                StatusMessage = "No images found in directory";
-                return;
-            }
-
-            TotalImages = items.Count;
-            ProcessedCount = 0;
-            ProcessingProgress = 0;
-            IsProcessing = true;
-            StatusMessage = $"Scanning {items.Count} images...";
-
-            await Task.Run(() =>
-                _processingService.ProcessBatchAsync(items));
+            _importRequest.PickedFiles = null;
+            _importRequest.DirectoryPath = directoryPath;
+            var result = await _jobManager.RunJob(typeof(ImageProcessingJob), CancellationToken.None);
+            StatusMessage = result.Exception != null
+                ? $"Import failed: {result.Exception.Message}"
+                : "Background import started";
         }
         catch (Exception ex)
         {
             StatusMessage = $"Import failed: {ex.Message}";
-            IsProcessing = false;
         }
     }
 
@@ -249,7 +254,7 @@ public partial class MainViewModel : ObservableObject
         try
         {
             IsBusy = true;
-            var images = await _vectorDb.GetAllAsync();
+            var images = await _vectorDb.GetAllAsync(_settings.SortMetric);
             Images.Clear();
             foreach (var img in images)
                 Images.Add(img);

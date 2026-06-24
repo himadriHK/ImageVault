@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:ImageVault.ViewModels"
+             xmlns:models="clr-namespace:ImageVault.Models"
+             x:Class="ImageVault.SettingsPage"
+             x:DataType="vm:SettingsViewModel"
+             Title="Settings">
+
+    <ScrollView Padding="16">
+        <VerticalStackLayout Spacing="20">
+
+            <Label Text="Search"
+                   FontSize="18"
+                   FontAttributes="Bold" />
+
+            <VerticalStackLayout Spacing="4">
+                <Label Text="Sort by" FontSize="14" />
+                <Picker ItemsSource="{Binding SortMetrics}"
+                        SelectedItem="{Binding SortMetric}"
+                        Title="Select sort metric" />
+            </VerticalStackLayout>
+
+            <VerticalStackLayout Spacing="4">
+                <Label Text="Minimum relevance score (0 = no filter)" FontSize="14" />
+                <Slider Minimum="0"
+                        Maximum="1"
+                        Value="{Binding FilterThreshold}" />
+                <Label Text="{Binding FilterThreshold, StringFormat='{0:F2}'}"
+                       FontSize="12"
+                       TextColor="Gray"
+                       HorizontalOptions="Center" />
+            </VerticalStackLayout>
+
+            <BoxView HeightRequest="1" Color="LightGray" />
+
+            <Label Text="Appearance"
+                   FontSize="18"
+                   FontAttributes="Bold" />
+
+            <VerticalStackLayout Spacing="4">
+                <Label Text="Theme" FontSize="14" />
+                <Picker ItemsSource="{Binding ThemeOptions}"
+                        SelectedIndex="{Binding SelectedThemeIndex}" />
+            </VerticalStackLayout>
+
+        </VerticalStackLayout>
+    </ScrollView>
+
+</ContentPage>

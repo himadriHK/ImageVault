@@ -32,10 +32,10 @@ public class ImageProcessingService : IImageProcessingService
         }
 
         var channel = Channel.CreateBounded<ProcessingItem>(
-            new BoundedChannelOptions(Math.Min(items.Count, 8))
+            new BoundedChannelOptions(Math.Min(items.Count, 50))
             {
                 FullMode = BoundedChannelFullMode.Wait,
-                SingleWriter = true
+                SingleWriter = false
             });
 
         var consumer = ConsumeAsync(channel.Reader, items.Count, ct);
@@ -132,7 +132,7 @@ public class ImageProcessingService : IImageProcessingService
             await _vectorDb.InsertAsync(entity);
             OnItemProcessed?.Invoke(item, 0, 0);
         }
-        catch (SQLite.SQLiteException) when (ExistsByPathSafe(item.FilePath))
+        catch when (ExistsByPathSafe(item.FilePath))
         {
         }
     }

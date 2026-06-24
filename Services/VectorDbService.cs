@@ -1,13 +1,14 @@
+using Build5Nines.SharpVector;
 using ImageVault.Models;
-using SQLite;
 
 namespace ImageVault.Services;
 
 public class VectorDbService : IVectorDbService
 {
-    private SQLiteAsyncConnection? _db;
+    private ImageVectorDatabase? _db;
     private bool _initialized;
     private readonly SemaphoreSlim _initLock = new(1, 1);
+    private const string DbFileName = "imagevault.b59vdb";
 
     public async Task InitializeAsync(CancellationToken ct = default)
     {
@@ -18,14 +19,13 @@ public class VectorDbService : IVectorDbService
         {
             if (_initialized) return;
 
-            var dbPath = Path.Combine(FileSystem.AppDataDirectory, "imagevault.db");
+            _db = new ImageVectorDatabase();
 
-            _db = new SQLiteAsyncConnection(dbPath,
-                SQLiteOpenFlags.ReadWrite |
-                SQLiteOpenFlags.Create |
-                SQLiteOpenFlags.SharedCache);
-
-            await _db.CreateTableAsync<ImageEntity>();
+            var dbPath = Path.Combine(FileSystem.AppDataDirectory, DbFileName);
+            if (File.Exists(dbPath))
+            {
+                await _db.LoadFromFileAsync(dbPath);
+            }
 
             _initialized = true;
         }
@@ -41,115 +41,114 @@ public class VectorDbService : IVectorDbService
             throw new InvalidOperationException("VectorDbService not initialized.");
     }
 
+    private async Task PersistAsync()
+    {
+        var dbPath = Path.Combine(FileSystem.AppDataDirectory, DbFileName);
+        await _db!.SaveToFileAsync(dbPath);
+    }
+
     public async Task<long> InsertAsync(ImageEntity entity)
     {
         EnsureInitialized();
-        await _db!.InsertAsync(entity);
-        return entity.Id;
+        ArgumentNullException.ThrowIfNull(entity.Embedding);
+
+        var metadata = ImageVectorDatabase.SerializeMetadata(entity);
+        var vector = System.Array.ConvertAll(entity.Embedding, v => (float)v);
+
+        var id = await _db!.AddVectorAsync(entity.FilePath, string.Empty, vector);
+        await PersistAsync();
+        entity.Id = id;
+        return id;
     }
 
     public async Task InsertBatchAsync(IEnumerable<ImageEntity> entities)
     {
         EnsureInitialized();
-        await _db!.InsertAllAsync(entities.ToList());
+        var list = entities.ToList();
+        if (list.Count == 0) return;
+
+        foreach (var entity in list)
+        {
+            if (entity.Embedding == null) continue;
+
+            var metadata = ImageVectorDatabase.SerializeMetadata(entity);
+            var vector = System.Array.ConvertAll(entity.Embedding, v => (float)v);
+            var id = await _db!.AddVectorAsync(entity.FilePath, metadata, vector);
+            entity.Id = id;
+        }
+
+        await PersistAsync();
     }
 
     public async Task<List<SearchResult>> SearchAsync(double[] queryEmbedding, int limit = 20)
     {
-        EnsureInitialized();
-
-        return await Task.Run(async () =>
-        {
-            var allEntities = await _db!.Table<ImageEntity>().ToListAsync();
-
-            var scored = new List<(ImageEntity Entity, double Score)>();
-            var normalizedQuery = NormalizeEmbedding(queryEmbedding);
-
-            foreach (var entity in allEntities)
-            {
-                if (entity.Embedding == null) continue;
-
-                var score = CosineSimilarity(normalizedQuery, entity.Embedding);
-                if (score > 0.08)
-                    scored.Add((entity, score));
-            }
-
-            return scored
-                .OrderByDescending(x => x.Score)
-                .Take(limit)
-                .Select(x => new SearchResult
-                {
-                    Entity = x.Entity,
-                    Score = x.Score
-                })
-                .ToList();
-        });
+        return await SearchAsync(queryEmbedding, SortMetric.Relevance, 0.0, limit);
     }
 
-    private static double[] NormalizeEmbedding(double[] vec)
+    public async Task<List<SearchResult>> SearchAsync(double[] queryEmbedding, SortMetric sortBy, double filterThreshold, int limit = 20)
     {
-        var sumSq = vec.Sum(v => v * v);
-        var norm = Math.Sqrt(sumSq);
-        if (norm < 1e-12) return vec;
-        var result = new double[vec.Length];
-        for (int i = 0; i < vec.Length; i++)
-            result[i] = vec[i] / norm;
-        return result;
+        EnsureInitialized();
+        ArgumentNullException.ThrowIfNull(queryEmbedding);
+
+        var queryVector = System.Array.ConvertAll(queryEmbedding, v => (float)v);
+
+        var results = _db!.SearchByVector(queryVector, sortBy, filterThreshold, limit);
+
+        return results
+            .Select(r =>
+            {
+                var entity = _db.GetById(r.Id);
+                return new SearchResult
+                {
+                    Entity = entity ?? new ImageEntity { Id = r.Id, FilePath = r.Text },
+                    Score = r.Similarity,
+                    DotProduct = r.DotProduct,
+                    LogitScore = r.Logit
+                };
+            })
+            .ToList();
     }
 
     public async Task<List<ImageEntity>> GetAllAsync()
     {
+        return await GetAllAsync(SortMetric.Relevance);
+    }
+
+    public async Task<List<ImageEntity>> GetAllAsync(SortMetric sortBy)
+    {
         EnsureInitialized();
-        return await _db!.Table<ImageEntity>().OrderByDescending(e => e.DateAddedUnixMs).ToListAsync();
+        return _db!.GetAll(sortBy);
     }
 
     public async Task<ImageEntity?> GetByIdAsync(long id)
     {
         EnsureInitialized();
-        return await _db!.Table<ImageEntity>().FirstOrDefaultAsync(e => e.Id == id);
+        return _db!.GetById((int)id);
     }
 
     public async Task<bool> ExistsByPathAsync(string filePath)
     {
         EnsureInitialized();
-        var count = await _db!.Table<ImageEntity>()
-            .Where(e => e.FilePath == filePath)
-            .CountAsync();
-        return count > 0;
+        return _db!.ExistsByPath(filePath);
     }
 
     public async Task<int> CountAsync()
     {
         EnsureInitialized();
-        return await _db!.Table<ImageEntity>().CountAsync();
+        return _db!.Count;
     }
 
     public async Task ClearAsync()
     {
         EnsureInitialized();
-        await _db!.DeleteAllAsync<ImageEntity>();
-    }
+        _db!.ClearAll();
 
-    private static double CosineSimilarity(double[] a, double[] b)
-    {
-        if (a.Length != b.Length)
-            throw new ArgumentException("Vectors must have same length");
-
-        double dotProduct = 0, normA = 0, normB = 0;
-
-        for (int i = 0; i < a.Length; i++)
-        {
-            dotProduct += a[i] * b[i];
-            normA += a[i] * a[i];
-            normB += b[i] * b[i];
-        }
-
-        var denom = Math.Sqrt(normA) * Math.Sqrt(normB);
-        return denom == 0 ? 0 : dotProduct / denom;
+        var dbPath = Path.Combine(FileSystem.AppDataDirectory, DbFileName);
+        await _db.SaveToFileAsync(dbPath);
     }
 
     public void Dispose()
     {
-        _db?.CloseAsync();
+        _db = null;
     }
 }
