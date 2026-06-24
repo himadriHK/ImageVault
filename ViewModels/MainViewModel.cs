@@ -142,7 +142,8 @@ public partial class MainViewModel : ObservableObject
 
             _importRequest.DirectoryPath = null;
             _importRequest.PickedFiles = items;
-            var jobResult = await _jobManager.RunJob(typeof(ImageProcessingJob), CancellationToken.None);
+            var jobResult = await Task.Run(
+                () => _jobManager.RunJob(typeof(ImageProcessingJob), CancellationToken.None));
             StatusMessage = jobResult.Exception != null
                 ? $"Import failed: {jobResult.Exception.Message}"
                 : $"{items.Count} files queued for import";
@@ -238,7 +239,8 @@ public partial class MainViewModel : ObservableObject
         {
             _importRequest.PickedFiles = null;
             _importRequest.DirectoryPath = directoryPath;
-            var result = await _jobManager.RunJob(typeof(ImageProcessingJob), CancellationToken.None);
+            var result = await Task.Run(
+                () => _jobManager.RunJob(typeof(ImageProcessingJob), CancellationToken.None));
             StatusMessage = result.Exception != null
                 ? $"Import failed: {result.Exception.Message}"
                 : "Background import started";

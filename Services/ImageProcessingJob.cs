@@ -16,9 +16,6 @@ public class ImageProcessingJob : IJob
         _importRequest = importRequest;
     }
 
-    private Task Show(string title, string message) =>
-        AndroidNotification.Show(title, message);
-
     public async Task Run(CancellationToken ct)
     {
         List<ProcessingItem>? items = null;
@@ -37,37 +34,46 @@ public class ImageProcessingJob : IJob
 
         if (items == null || items.Count == 0)
         {
-            await Show("Import complete", "No new images found");
+            //await AndroidNotification.Show("Import complete", "No new images found");
             return;
         }
-
-        await Show("Importing images", $"Found {items.Count} images");
 
         int total = items.Count;
         int processed = 0;
 
-        _processingService.OnItemProcessed += (_, _, _) =>
+        await AndroidNotification.ShowProgress("Importing images", $"0/{total} processed", 0, total);
+
+        Action<ProcessingItem, int, int>? onProcessed = null;
+        Action<string>? onError = null;
+
+        onProcessed = (_, _, _) =>
         {
             var count = Interlocked.Increment(ref processed);
-            if (count % 10 == 0 || count == total)
-            {
-                _ = Show("Importing images", $"{count}/{total} processed");
-            }
+            var _ = AndroidNotification.ShowProgress(
+                "Importing images", $"{count}/{total} processed", count, total);
         };
 
-        _processingService.OnError += msg =>
+        onError = msg =>
         {
-            _ = Show("Import error", msg);
+            var _ = AndroidNotification.Show("Import error", msg);
         };
+
+        _processingService.OnItemProcessed += onProcessed;
+        _processingService.OnError += onError;
 
         try
         {
             await _processingService.ProcessBatchAsync(items, ct);
-            await Show("Import complete", $"{total} images indexed");
+            await AndroidNotification.ShowDone("Import complete", $"{total} images indexed");
         }
         catch (Exception ex)
         {
-            await Show("Import failed", ex.Message);
+            await AndroidNotification.Show("Import failed", ex.Message);
+        }
+        finally
+        {
+            _processingService.OnItemProcessed -= onProcessed;
+            _processingService.OnError -= onError;
         }
     }
 }
