@@ -1,6 +1,7 @@
 using CommunityToolkit.Maui;
 using ImageVault.Services;
 using ImageVault.ViewModels;
+using ImageVault.Views;
 using Shiny;
 using Shiny.Jobs;
 using SkiaSharp.Views.Maui.Controls.Hosting;
@@ -28,11 +29,16 @@ public static class MauiProgram
         builder.Services.AddSingleton<IVectorDbService, VectorDbService>();
         builder.Services.AddSingleton<IImageProcessingService, ImageProcessingService>();
 
+        builder.Services.AddSingleton<IFaceService, FaceService>();
+        builder.Services.AddSingleton<IFaceDbService, FaceDbService>();
+
         builder.Services.AddSingleton<MainViewModel>();
         builder.Services.AddSingleton<SettingsViewModel>();
+        builder.Services.AddSingleton<FacesViewModel>();
         builder.Services.AddSingleton<MainPage>();
         builder.Services.AddTransient<SettingsPage>();
         builder.Services.AddTransient<ImageViewerPage>();
+        builder.Services.AddTransient<FacesPage>();
 
         builder.Services.AddSingleton<ImportRequest>();
 

@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:ImageVault.ViewModels"
+             xmlns:skia="clr-namespace:SkiaSharp.Views.Maui.Controls;assembly=SkiaSharp.Views.Maui.Controls"
+             x:Class="ImageVault.Views.FacesPage"
+             Title="Faces">
+
+    <Grid RowDefinitions="Auto,*" Padding="16">
+        <SearchBar Grid.Row="0"
+                   Placeholder="Search by name or emotion..."
+                   Text="{Binding SearchQuery}"
+                   SearchCommand="{Binding SearchCommand}" />
+
+        <CollectionView Grid.Row="1"
+                        ItemsSource="{Binding Faces}"
+                        SelectionMode="None"
+                        Margin="0,8,0,0">
+            <CollectionView.ItemsLayout>
+                <GridItemsLayout Orientation="Vertical"
+                                 Span="2"
+                                 HorizontalItemSpacing="8"
+                                 VerticalItemSpacing="8" />
+            </CollectionView.ItemsLayout>
+            <CollectionView.ItemTemplate>
+                <DataTemplate x:DataType="vm:FaceDisplayItem">
+                    <Border StrokeShape="RoundRectangle 8"
+                            Stroke="Transparent"
+                            BackgroundColor="{AppThemeBinding Light={StaticResource Gray100}, Dark=#1E1E1E}"
+                            Padding="8">
+                        <Grid RowDefinitions="*,Auto,Auto"
+                              RowSpacing="4">
+                            <skia:SKCanvasView Grid.Row="0"
+                                               HeightRequest="120"
+                                               EnableTouchEvents="False"
+                                               PaintSurface="OnPaintSurface"
+                                               InputTransparent="True" />
+
+                            <Label Grid.Row="1"
+                                   Text="{Binding Name}"
+                                   FontAttributes="Bold"
+                                   FontSize="14"
+                                   HorizontalOptions="Center" />
+
+                            <Label Grid.Row="2"
+                                   Text="{Binding EmotionBadge}"
+                                   FontSize="11"
+                                   TextColor="{AppThemeBinding Light={StaticResource Gray600}, Dark=#AAAAAA}"
+                                   HorizontalOptions="Center" />
+                        </Grid>
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer
+                                Command="{Binding Source={RelativeSource AncestorType={x:Type vm:FacesViewModel}}, Path=RenameFaceCommand}"
+                                CommandParameter="{Binding .}" />
+                        </Border.GestureRecognizers>
+                    </Border>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+            <CollectionView.EmptyView>
+                <Label Text="No faces found"
+                       HorizontalOptions="Center"
+                       VerticalOptions="Center"
+                       TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark=#666666}" />
+            </CollectionView.EmptyView>
+        </CollectionView>
+
+        <ActivityIndicator Grid.Row="1"
+                           IsRunning="{Binding IsBusy}"
+                           IsVisible="{Binding IsBusy}"
+                           HorizontalOptions="Center"
+                           VerticalOptions="Center" />
+    </Grid>
+
+</ContentPage>

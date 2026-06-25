@@ -7,24 +7,36 @@ public class ImageProcessingService : IImageProcessingService
 {
     private readonly IClipService _clipService;
     private readonly IVectorDbService _vectorDb;
+    private readonly IFaceService? _faceService;
+    private readonly IFaceDbService? _faceDbService;
 
     public event Action<ProcessingItem, int, int>? OnItemProcessed;
     public event Action<int>? OnBatchProgress;
     public event Action<string>? OnError;
     public event Action? OnBatchComplete;
 
+    public int TotalFacesDetected { get; private set; }
+
     private static readonly HashSet<string> SupportedExtensions = [".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"];
 
-    public ImageProcessingService(IClipService clipService, IVectorDbService vectorDb)
+    public ImageProcessingService(
+        IClipService clipService,
+        IVectorDbService vectorDb,
+        IFaceService? faceService = null,
+        IFaceDbService? faceDbService = null)
     {
         _clipService = clipService;
         _vectorDb = vectorDb;
+        _faceService = faceService;
+        _faceDbService = faceDbService;
     }
 
     public async Task ProcessBatchAsync(
         IReadOnlyList<ProcessingItem> items,
         CancellationToken ct = default)
     {
+        TotalFacesDetected = 0;
+
         if (items.Count == 0)
         {
             OnBatchComplete?.Invoke();
@@ -134,6 +146,46 @@ public class ImageProcessingService : IImageProcessingService
         }
         catch when (ExistsByPathSafe(item.FilePath))
         {
+        }
+
+        if (_faceService != null && _faceDbService != null)
+        {
+            try
+            {
+                var faces = await _faceService.ProcessImageAsync(item.FilePath, ct);
+                foreach (var face in faces)
+                {
+                    var faceEntity = new FaceEntity
+                    {
+                        Name = "Unknown",
+                        Emotion = face.Emotion,
+                        EmotionConfidence = face.EmotionConfidence,
+                        ImageFilePath = item.FilePath,
+                        BoxX = face.BoxX,
+                        BoxY = face.BoxY,
+                        BoxWidth = face.BoxWidth,
+                        BoxHeight = face.BoxHeight,
+                        Embedding = face.Embedding,
+                        DateAddedUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+                    };
+                    await _faceDbService.AddFaceAsync(faceEntity);
+
+                    try
+                    {
+                        var thumbPath = FaceThumbnailHelper.GetThumbnailPath(faceEntity.Id);
+                        FaceThumbnailHelper.SaveThumbnail(
+                            item.FilePath, face.BoxX, face.BoxY,
+                            face.BoxWidth, face.BoxHeight, thumbPath);
+                    }
+                    catch { }
+
+                    TotalFacesDetected++;
+                }
+            }
+            catch (Exception ex)
+            {
+                OnError?.Invoke($"Face detection failed for {item.FileName}: {ex.Message}");
+            }
         }
     }
 

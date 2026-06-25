@@ -11,6 +11,7 @@ public partial class MainViewModel : ObservableObject
 {
     private readonly IClipService _clipService;
     private readonly IVectorDbService _vectorDb;
+    private readonly IFaceDbService _faceDbService;
     private readonly IJobManager _jobManager;
     private readonly ImportRequest _importRequest;
     private readonly SettingsViewModel _settings;
@@ -39,12 +40,14 @@ public partial class MainViewModel : ObservableObject
     public MainViewModel(
         IClipService clipService,
         IVectorDbService vectorDb,
+        IFaceDbService faceDbService,
         IJobManager jobManager,
         ImportRequest importRequest,
         SettingsViewModel settings)
     {
         _clipService = clipService;
         _vectorDb = vectorDb;
+        _faceDbService = faceDbService;
         _jobManager = jobManager;
         _importRequest = importRequest;
         _settings = settings;
@@ -64,6 +67,7 @@ public partial class MainViewModel : ObservableObject
 
             await AndroidNotification.RequestPermissionAsync();
             await _vectorDb.InitializeAsync();
+            await _faceDbService.InitializeAsync();
             await LoadImagesAsync();
 
             var progress = new Progress<double>(p =>

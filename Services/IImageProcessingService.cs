@@ -9,6 +9,8 @@ public interface IImageProcessingService
     event Action<string>? OnError;
     event Action? OnBatchComplete;
 
+    int TotalFacesDetected { get; }
+
     Task ProcessBatchAsync(
         IReadOnlyList<ProcessingItem> items,
         CancellationToken ct = default);

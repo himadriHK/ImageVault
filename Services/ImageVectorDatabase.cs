@@ -25,20 +25,22 @@ public class ImageVectorDatabase : MemoryVectorDatabase<string>
     public List<(int Id, string Text, float Similarity, float DotProduct, float Logit)> SearchByVector(
         float[] queryVector, SortMetric sortBy = SortMetric.Relevance, double filterThreshold = 0.0, int? limit = null)
     {
-        var entries = new List<(int Id, string Text, float CosSim, float DotProd, long DateAdded, long FileSize)>();
-        var scaledCosScores = new List<float>();
+        var bag = new System.Collections.Concurrent.ConcurrentBag<(
+            int Id, string Text, float CosSim, float DotProd, long DateAdded, long FileSize)>();
+        var scoreBag = new System.Collections.Concurrent.ConcurrentBag<float>();
 
-        foreach (var kvp in VectorStore)
+        Parallel.ForEach(VectorStore, kvp =>
         {
-            var cosSim = CosineSimilarity(queryVector, kvp.Value.Vector);
-            var dotProd = DotProduct(queryVector, kvp.Value.Vector);
+            var (cosSim, dotProd) = CosineSimilarity(queryVector, kvp.Value.Vector);
             var meta = TryDeserializeMetadata(kvp.Value.Metadata);
-            entries.Add((kvp.Key, kvp.Value.Text, cosSim, dotProd,
+            bag.Add((kvp.Key, kvp.Value.Text, cosSim, dotProd,
                 meta?.DateAddedUnixMs ?? 0, meta?.FileSize ?? 0));
-            scaledCosScores.Add(100.0f * cosSim);
-        }
+            scoreBag.Add(100.0f * cosSim);
+        });
 
-        var probs = Softmax(scaledCosScores.ToArray());
+        var entries = bag.ToList();
+        var scores = scoreBag.ToList();
+        var probs = Softmax([.. scores]);
 
         var results = new List<(int Id, string Text, float Similarity, float DotProduct, float Logit)>();
         for (int i = 0; i < entries.Count; i++)
@@ -163,7 +165,7 @@ public class ImageVectorDatabase : MemoryVectorDatabase<string>
         return entity;
     }
 
-    private static float CosineSimilarity(float[] a, float[] b)
+    private static (float cosSim, float dotProd) CosineSimilarity(float[] a, float[] b)
     {
         double dot = 0, normA = 0, normB = 0;
         for (int i = 0; i < a.Length; i++)
@@ -172,15 +174,7 @@ public class ImageVectorDatabase : MemoryVectorDatabase<string>
             normA += a[i] * a[i];
             normB += b[i] * b[i];
         }
-        return (float)(dot / (Math.Sqrt(normA) * Math.Sqrt(normB)));
-    }
-
-    private static float DotProduct(float[] a, float[] b)
-    {
-        double dot = 0;
-        for (int i = 0; i < a.Length; i++)
-            dot += a[i] * b[i];
-        return (float)dot;
+        return ((float)(dot / (Math.Sqrt(normA) * Math.Sqrt(normB))), (float)dot);
     }
 
     private static float LogitScore(float cosineSimilarity)
@@ -205,8 +199,7 @@ public class ImageVectorDatabase : MemoryVectorDatabase<string>
         }
 
         var result = new float[n];
-        for (int i = 0; i < n; i++)
-            result[i] = (float)(expVals[i] / sum);
+        Parallel.For(0, n, i => result[i] = (float)(expVals[i] / sum));
         return result;
     }
 }

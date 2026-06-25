@@ -7,13 +7,16 @@ public class ImageProcessingJob : IJob
 {
     private readonly IImageProcessingService _processingService;
     private readonly ImportRequest _importRequest;
+    private readonly IFaceDbService? _faceDbService;
 
     public ImageProcessingJob(
         IImageProcessingService processingService,
-        ImportRequest importRequest)
+        ImportRequest importRequest,
+        IFaceDbService? faceDbService = null)
     {
         _processingService = processingService;
         _importRequest = importRequest;
+        _faceDbService = faceDbService;
     }
 
     public async Task Run(CancellationToken ct)
@@ -49,8 +52,11 @@ public class ImageProcessingJob : IJob
         onProcessed = (_, _, _) =>
         {
             var count = Interlocked.Increment(ref processed);
-            var _ = AndroidNotification.ShowProgress(
-                "Importing images", $"{count}/{total} processed", count, total);
+            var faceCount = _processingService.TotalFacesDetected;
+            var text = faceCount > 0
+                ? $"{count}/{total} — {faceCount} faces"
+                : $"{count}/{total} processed";
+            var _ = AndroidNotification.ShowProgress("Importing images", text, count, total);
         };
 
         onError = msg =>
@@ -64,7 +70,11 @@ public class ImageProcessingJob : IJob
         try
         {
             await _processingService.ProcessBatchAsync(items, ct);
-            await AndroidNotification.ShowDone("Import complete", $"{total} images indexed");
+            var faceCount = _processingService.TotalFacesDetected;
+            var doneText = faceCount > 0
+                ? $"{total} images indexed, {faceCount} faces detected"
+                : $"{total} images indexed";
+            await AndroidNotification.ShowDone("Import complete", doneText);
         }
         catch (Exception ex)
         {

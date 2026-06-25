@@ -50,28 +50,7 @@ public class ClipService : IClipService, IDisposable
 
     private static Task<InferenceSession> CreateSessionWithGpuAsync(string modelPath, CancellationToken ct)
     {
-        var sessionOptions = new SessionOptions
-        {
-            GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL,
-            EnableCpuMemArena = true,
-            //EnableMemoryPattern = true,
-            IntraOpNumThreads = Environment.ProcessorCount,
-            ExecutionMode = ExecutionMode.ORT_PARALLEL,
-            //InterOpNumThreads = Environment.ProcessorCount
-        };
-
-        // Register NNAPI GPU execution provider (Android Neural Networks API).
-        // Heavy ops (Conv, MatMul, Softmax) run on GPU where available;
-        // unsupported ops (LayerNorm, Gelu) fall back to CPU automatically.
-        try
-        {
-            sessionOptions.AppendExecutionProvider_Nnapi(NnapiFlags.NNAPI_FLAG_CPU_ONLY);
-        }
-        catch
-        {
-            sessionOptions.AppendExecutionProvider_CPU();
-        }
-
+        var sessionOptions = OrtOptimizer.CreateOptimizedOptions();
         return Task.Run(() => new InferenceSession(modelPath, sessionOptions), ct);
     }
 
@@ -213,10 +192,10 @@ public class ClipService : IClipService, IDisposable
         if (resized == null)
             throw new InvalidOperationException("Failed to resize image");
 
-        var pixels = resized.GetPixelSpan();
+        var pixels = resized.GetPixelSpan().ToArray();
         var rowBytes = resized.RowBytes;
 
-        for (int y = 0; y < ImageSize; y++)
+        Parallel.For(0, ImageSize, y =>
         {
             var row = y * rowBytes;
             var rowOffset = y * ImageSize;
@@ -229,7 +208,7 @@ public class ClipService : IClipService, IDisposable
                 pixelBuffer[ImageSize * ImageSize + idx] = (pixels[offset + 1] * Inv255 - Mean[1]) / Std[1];
                 pixelBuffer[2 * ImageSize * ImageSize + idx] = (pixels[offset] * Inv255 - Mean[2]) / Std[2];
             }
-        }
+        });
     }
 
     private static Stream OpenImageStream(string path)

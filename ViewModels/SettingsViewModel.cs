@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using ImageVault.Models;
+using ImageVault.Services;
 
 namespace ImageVault.ViewModels;
 
@@ -31,6 +32,16 @@ public partial class SettingsViewModel : ObservableObject
         "Light",
         "Dark"
     ];
+
+    [ObservableProperty]
+    private string _ortProviders = "(not loaded yet)";
+
+    public void RefreshOrtProviders()
+    {
+        OrtProviders = OrtOptimizer.EnabledProviders.Count > 0
+            ? string.Join(" → ", OrtOptimizer.EnabledProviders)
+            : "(not loaded yet)";
+    }
 
     public SettingsViewModel()
     {
